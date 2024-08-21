@@ -1,0 +1,138 @@
+---
+title: "Creating a time series clustering model"
+author: "Chloe Hutton"
+date: "2024-08-20"
+output: html_notebook
+---
+
+# 03 Creating a time series clustering model
+
+As before, we will ensure that the working directory is correct.
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/treatment_pathway_exploration")
+```
+
+## Loading in the sequence objects and TrajectoryAnalysis object
+
+To make it easier, we will load in the `patient_trajectories.r` file which will create and load the following:
+
+-   `seqact_all` all patient trajectories for the cohort with a state for every GLP-1 RA type
+
+-   `seqact_pooled_all` all patient trajectories for the cohort with one state for all GLP-1 RAs
+
+-   `create_stratified_cohort` is a function to create a sample of the full cohort
+
+-   `TrajectoryAnalysis` is an `R6` class for creating the time series clustering model
+
+Additionally, there are separate variables for `palette`, `scodes`, `labels` and `alphabet` - for GLP-1 RAs as one state, add \*\_pooled\* to the end (e.g. `palette_pooled`)
+
+```{r}
+source("./code/patient_trajectories.r")
+```
+
+The `create_stratified_cohort` function can be used to sample the dataset stratifying by age, gender, year of index date and other anti-obesity medication use. The default sample size is 10%, but you can adjust this with `sample_size`, specifying the sample size as a decimal.
+
+```{r}
+# additional patient information for stratifying sample
+pat_details_file <- "./data/pat_level_info.csv"
+
+# run function to create a stratified sample
+stratified_seqact_pooled <- create_stratified_cohort(seqact_pooled_all, pat_details_file = pat_details_file, sample_size = 0.1)
+```
+
+```{r}
+# check summary information is a 10% sample of full cohort
+summary(stratified_seqact_pooled)
+```
+
+Example with distinct GLP-1 RA types.
+
+```{r}
+# run function to create a stratified sample with GLP-1 RA types
+stratified_seqact <- create_stratified_cohort(seqact_all, pat_details_file = pat_details_file, sample_size = 0.1)
+```
+
+```{r}
+# check summary information
+summary(stratified_seqact)
+```
+
+## Using the `TrajectoryAnalysis` class to create a model
+
+To create a model, we will use the pooled GLP-1 RA stratified sample, using a transition rate substitution cost matrix which varies for every time unit, to be used with dynamic hamming distance (*DHD*).
+
+For this, we need to specify:
+
+-   `time_varies` needs to be **TRUE** to ensure the substitution cost matrix varies every time unit.
+
+-   `seqdist_method` needs to be **DHD** for dynamic hamming distance
+
+Other parameters:
+
+-   `pi_dissim` indicates whether you wish for the distance matrix to be created on the post-index date period only or not. It defaults to **FALSE** but in this instance, we will switch it to **TRUE** as there is little heterogeneity in the pre-index date period.
+
+-   `name` allows you to provide the model with a suitable name.
+
+-   `rand_entropy` and `rand_entropy_all` are two optional parameters if you wish for the final results table to include the random entropy scores for comparison.
+
+-   `trace_flag` is set to **TRUE** to print out extra details while the methods in the class are run. This can be changed to **FALSE** to reduce the print output in the console.
+
+-   `heatmap_flag` is an option to save down a sequence index plot during the `run_analysis` method. For now, we will leave this as **FALSE**.
+
+```{r}
+model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                alphabet_pooled, labels_pooled, scodes_pooled,
+                                name = "Model_A_stratified", con_val = 2,
+                                cost_method = "TRATE", trace_flag = TRUE,
+                                heatmap_flag = FALSE, seqdist_method = "DHD",
+                                time_varies = TRUE,
+                                cluster_method = "ward.D2",
+                                rand_entropy = 0.33,
+                                rand_entropy_rhs = 0.628,
+                                pi_dissim = TRUE)
+```
+
+One a model is created, the method `run_analysis` is used to run the model.
+
+```{r}
+# run the model
+model$run_analysis()
+```
+
+## Reviewing a model's results
+
+There is an option to review the results.
+
+```{r}
+model$results
+```
+
+There are other methods in the class which can be used to review the model.
+
+-   `cluster_heatmap` provides a sequence index plot of the patient trajectories with partitions to indicate the clusters. There is a parameter, `k`, to determine the number of clusters to show.
+
+-   `dend_heatmap` is similar to the above, but shows the dendrogram on the left side of the plot for further context/ However, it does not have y-axis tick labels.
+
+-   `create_dendrogram` saves down the dendrogram on its own.
+
+```{r}
+model$cluster_heatmap(k = 2)
+```
+
+```{r}
+model$dend_heatmap(k = 2)
+```
+
+```{r}
+model$create_dendrogram()
+```
+
+## Saving down a model to review later
+
+If you have run a model on the full cohort and wish to save time in the future when you wish to review it again, you can save down a model.
+
+```{r}
+# save model for future use
+saveRDS(model, file = sprintf("./models/%s.rds", model$name))
+```

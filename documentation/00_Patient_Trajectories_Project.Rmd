@@ -1,0 +1,49 @@
+---
+title: "Patient trajectory analysis: GLP-1 RAs for weight loss"
+author: "Chloe Hutton"
+output: html_notebook
+---
+
+# 00 Patient trajectory analysis: GLP-1 RAs for weight loss code
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook of the code used in the University of Exeter MSc Health Data Science HPDM099 Final Project on patient treatment pathways with IQVIA.
+
+Below is an outline of the R notebooks created to document the code.
+
+-   [01 Event log to sequences table](./01_event_log_to_sequences_table.Rmd)
+
+-   [02 Creating sequences with `TraMineR`](./02_creating_sequences_with_traminer.Rmd)
+
+-   [03 Creating a time series clustering model](./03_creating_a_time_series_clustering_model.Rmd)
+
+-   [04 Stratified sample model iterations](./04_stratified_sample_model_iterations.Rmd)
+
+-   [05 Analysing models further](./05_analysing_models_further.Rmd)
+
+-   [06 Producing summary tables from patient characteristics and treatment durations](./06_producing_summary_tables.Rmd)
+
+A brief outline of the notebooks is below:
+
+## [01 Event log to sequences table](./01_event_log_to_sequences_table.Rmd)
+
+This notebook advises on how an event log was transformed into patient trajectories.
+
+## [02 Creating sequences with `TraMineR`](./02_creating_sequences_with_traminer.Rmd)
+
+This notebook demonstrates how the patient trajectory files were turned into a sequence object in `TraMineR` and then reviewed using the entropy and state distribution plots.
+
+## [03 Creating a time series clustering model](./03_creating_a_time_series_clustering_model.Rmd)
+
+The `TrajectoryAnalysis` class is introduced to create a time series clustering model.
+
+## [04 Stratified sample model iterations](./04_stratified_sample_model_iterations.Rmd)
+
+The code for iterating through different models and parameters is provided here.
+
+## [05 Analysing models further](./05_analysing_models_further.Rmd)
+
+Further functions for saving other plots for analysis are shown in this notebook.
+
+## [06 Producing summary tables from patient characteristics and treatment durations](./06_producing_summary_tables.Rmd)
+
+This notebook creates summary tables from the cohort information.

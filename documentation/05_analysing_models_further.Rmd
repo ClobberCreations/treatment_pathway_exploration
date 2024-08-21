@@ -1,0 +1,88 @@
+---
+title: "Analysing models further"
+author: "Chloe Hutton"
+date: "2024-08-20"
+output: html_notebook
+---
+
+# 05 Analysing models further
+
+Once a model or models have been selected for further analysis, you can use some functions in the `model_analysis.r` file to analyse it further.
+
+First, we will set the directory and then load in the functions.
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/treatment_pathway_exploration")
+```
+
+```{r}
+# load model analysis functions
+source("./code/model_analysis.r")
+```
+
+```{r}
+# load sequence objects
+source("./code/patient_trajectories.r")
+```
+
+For this example, we will load the example model saved down from notebook 03, or you can update to another model if you have saved one.
+
+```{r}
+model_A <- readRDS("./models/model_A_stratified.rds")
+```
+
+We will obtain the stratified sample used as well for GLP-1 RA type in case we want to use it in some of the visuals. We will filter to the patients in the stratified sample for pooled, using the row names.
+
+```{r}
+# run function to create a stratified sample with GLP-1 RA types
+stratified_seqact <- seqact_all[row.names(model_A$seqact),]
+
+summary(stratified_seqact)
+```
+
+We can create an intertia plot using the `create_inertia_plot` function from `model_analysis.r`
+
+```{r}
+# create inertia plot using height of dendrogram
+create_inertia_plot(model_A, elbow_point = NA)
+```
+
+We can create labelled clusters with the `label_clusters` function.
+
+```{r}
+# create labelled clusters for plotting
+model_A_clusters <- label_clusters(model_A, k = 2)
+```
+
+You can preview the distribution of patients between clusters.
+
+```{r}
+table(model_A_clusters)
+```
+
+The state distribution plot can be produced again but this time stratified by cluster.
+
+```{r}
+# create distribution plots split by cluster
+create_dist_plot(seqact_all[row.names(model_A$seqact),], scodes, palette, clusters = model_A_clusters, model_name = model_A$name)
+```
+
+The representative sequences per cluster can be output as well to an image file.
+
+```{r}
+# GLP-1 RA state sequence representative plot
+create_rep_plot(model_A$seqact, model_A, labels_pooled, palette_pooled, clusters = model_A_clusters)
+```
+
+As there is little heterogeneity in the pre-index date period, we will plot the mean time spent in every state for index date onwards instead.
+
+```{r}
+create_mean_time_plot(stratified_seqact, model_A, labels, palette, clusters = model_A_clusters)
+```
+
+To analyse the clusters further, such as patient characteristics, we can save the patient IDs (row names) and clusters down for later.
+
+```{r}
+# save down clusters by PatId into a csv in results folder
+save_clusters_id(model_A, k = 2)
+```

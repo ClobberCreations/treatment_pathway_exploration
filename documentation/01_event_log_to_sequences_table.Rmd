@@ -1,0 +1,80 @@
+---
+title: "Patient trajectory analysis: GLP-1 RAs for weight loss"
+author: "Chloe Hutton"
+date: "2024-08-12"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook of the code used in the University of Exeter MSc Health Data Science HPDM099 Final Project on patient treatment pathways.
+
+## 1. Set the working directory
+
+First, we will set the working directory (amend if you are using a different working directory)
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/treatment_pathway_exploration")
+```
+
+Check the change has taken place.
+
+```{r}
+getwd()
+```
+
+## 2. Transform the event log into a sequence table
+
+First, we will define the event log file as `event_log_file`.
+
+```{r}
+event_log_file <- "./data/GLP-1 RA first-use as anti-obesity medication (no diabetes)_Event.csv"
+```
+
+For this, we will load the function in another file.
+
+```{r}
+source("./code/events_to_sequences.r")
+```
+
+We need to create another couple of variables to highlight the columns to use in the data file as well as specifying any date columns.
+
+```{r}
+# specify the columns to use
+col_names <- c("PatId",
+               "EventDate",                                      
+               "Gender",
+               "Gender_Desc",                    
+               "Age",
+               "Age_Desc",                  
+               "IndexDate",
+               "GLP1_Count",                      
+               "GLP1s",
+               "GLP1_days_supply",                    
+               "Other_Med_Class_Count",
+               "Other_medications",
+               "Other_medications_days_supply",
+               "DULAGLUTIDE",                
+               "EXENATIDE  (BYDUREON, BYETTA)",
+               "SEMAGLUTIDE (OZEMPIC)",
+               "LIRAGLUTIDE (VICTOZA)",
+               "TIRZEPATIDE (MOUNJARO)",
+               "LIXISENATIDE (ADLYXIN)",
+               "LIRAGLUTIDE (SAXENDA)",
+               "ALBIGLUTIDE (TANZEUM)",
+               "SEMAGLUTIDE (WEGOVY)")
+
+# specify the dat columns
+date_cols <- c("EventDate",                  
+               "IndexDate")
+```
+
+Next, we will run the function to save down a copy of the event log as a sequence table with the GLP-1 RAs grouped.
+
+```{r}
+sequence_format(event_log_file, col_names, date_cols = date_cols, combine_GLP1s = TRUE)
+```
+
+A copy with a separate state for every GLP-1 RA type can be saved down as well by setting `combine_GLP1s` to *FALSE*.
+
+```{r}
+sequence_format(event_log_file, col_names, date_cols = date_cols, combine_GLP1s = FALSE)
+```

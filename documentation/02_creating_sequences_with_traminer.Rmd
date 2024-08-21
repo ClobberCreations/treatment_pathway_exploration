@@ -1,0 +1,217 @@
+---
+title: "Creating Sequences with TraMineR"
+author: "Chloe Hutton"
+date: "2024-08-12"
+output: html_document
+---
+
+# 02 Creating sequences with TraMineR
+
+`TraMineR` was used to turn the csv file of patient trajectories into a sequence object.
+
+First, the necessary libraries were imported.
+
+```{r}
+# Load required libraries
+library(TraMineR)  # for creating the sequence object and plots
+library(RColorBrewer)  # for colour palettes
+```
+
+Next, the working directory was set (update if necessary).
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/treatment_pathway_exploration")
+```
+
+Next, the data file directory was created as a variable.
+
+```{r}
+# patient trajectories
+data_file <- "./data/distinct_GLP1_sequences.csv"
+```
+
+For `TraMineR`, you can specify the following:
+
+-   `alphabet` are all the values existing in the trajectory file currently
+
+-   `palette` allows you to specify the colours to use in the sequence plots
+
+-   `labels` specifies the descriptions for every state (needs to be in the same order to correspond with the *alphabet*)
+
+-   `scodes` are short-hand versions of the labels handy if you need to use shorter descriptions
+
+```{r}
+alphabet <- c(0, 1, 2, 3, 4, 5, 6, 7)
+palette <- brewer.pal(length(alphabet), 'Set2')
+labels <- c("No GLP-1 RA or Other Anti-Obesity Medication",
+            "Semaglutide",
+            "Liraglutide",
+            "Dulaglutide",
+            "Tirzepatide",
+            "Exenatide",
+            "Other Anti-Obesity Medication",
+            "GLP-1 RA & Other Anti-Obesity Medication")
+scodes <- c("No medication",
+            "Semaglutide",
+            "Liraglutide",
+            "Dulaglutide",
+            "Tirzepatide",
+            "Exenatide",
+            "Other",
+            "GLP-1 RA & Other")
+```
+
+## Loading the data
+
+The trajectories are loaded.
+
+```{r}
+# Load the data
+# check names is FALSE to stop column names being reformatted
+trajact <- read.table(data_file, header = TRUE, sep = ",", row.names = 1, check.names=FALSE)
+```
+
+The trajectories were previewed to check they loaded as expected.
+
+```{r}
+head(trajact)
+```
+
+## Creating the sequence object
+
+The variables above were used to define the sequence state object.
+
+```{r}
+seqact <- seqdef(trajact, cpal = palette,
+                 alphabet = alphabet,
+                 states = scodes,
+                 labels = labels,
+                 xstep = round(ncol(trajact) / 43, 0),
+                 tick.last = TRUE)
+```
+
+Again, we can summarise the result.
+
+```{r}
+summary(seqact)
+```
+
+## Viewing the entropy and state distribution
+
+Two key plots of the full cohort can be accessed as functions from the file `full_cohort_analysis.r` , which we can load into this notebook to use.
+
+```{r}
+# load plotting functions for full cohort analysis
+source("./code/full_cohort_analysis.r")
+```
+
+To save down a copy of the entropy over time, use the `create_entropy_plot` function. You can manually specify the file path and file name if you do not wish for it to be saved under the default option, which is saved in results as *Entropy_Plot.png*.
+
+```{r}
+create_entropy_plot(seqact, plot_file = "./results/Example_entropy_plot.png")
+```
+
+For the state distribution plot over time, use the `create_dist_plot` function. For this, you will need to specify the labels and palette.
+
+```{r}
+create_dist_plot(seqact, labels, palette, plot_file = "./results/Example_distribution_plot.png")
+```
+
+## Viewing the entropy for GLP-1 RA medications by type and pooled
+
+The entropy plot can be viewed with two lines if required. To show entropy over time for both distinct and pooled GLP-1 RAs, we will load in a new sequence object.
+
+```{r}
+# file for pooled GLP-1 RAs
+data_file_pooled <- "./data/GLP1_sequences.csv"
+
+# create alphabet, palette, labels and scodes for pooled version
+alphabet_pooled <- c(0, 1, 2, 3)
+palette_pooled <- brewer.pal(length(alphabet_pooled), 'Set2')
+labels_pooled <- c("No GLP-1 RA or Other Anti-Obesity Medication",
+                   "GLP-1 RA",
+                   "Other Anti-Obesity Medication",
+                   "GLP-1 RA & Other Anti-Obesity Medication")
+scodes_pooled <- c("No medication",
+                   "GLP-1 RA",
+                   "Other",
+                   "GLP-1 RA & Other")
+
+# Load the data
+trajact_pooled <- read.table(data_file_pooled, header = TRUE, sep = ",", row.names = 1, check.names=FALSE)
+
+# create pooled GLP-1 RAs sequence object
+seqact_pooled <- seqdef(trajact_pooled, cpal = palette_pooled,
+                            alphabet = alphabet_pooled,
+                            states = scodes_pooled,
+                            labels = labels_pooled)
+```
+
+Once loaded, you can create the entropy plot.
+
+```{r}
+create_entropy_plot(seqact, seqact2 = seqact_pooled, plot_file = "./results/Example_two_entropies_plot.png")
+```
+
+## Working out the random entropy of the trajectories
+
+To provide a benchmark for the clustering of future models, the random entropy score for the full and excluding pre-index date, was calculated.
+
+First, we will load the file containing the random entropy function.
+
+```{r}
+source("./code/random_entropy.r")
+```
+
+```{r}
+# Setup parallel processing
+num_cores <- detectCores() - 1
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+# Set seed for reproducibility
+set.seed(101)
+print("Starting random entropy measures...")
+start_rand_entropy <- Sys.time()
+
+# Compute random entropy scores in parallel
+# project used 100x but this example does 5 for demo
+rand_entropy_all <- foreach(i = 1:5, .combine = c, .packages = 'entropy') %dopar% {
+    rand_entropy_measure(seqact_pooled)
+}
+
+rand_entropy_rhs <- foreach(i = 1:5, .combine = c, .packages = 'entropy') %dopar% {
+    rand_entropy_measure(seqact_pooled, rhs = TRUE)
+}
+
+end_rand_entropy <- Sys.time()
+rand_ent_time <- round(difftime(end_rand_entropy, start_rand_entropy, units = "secs"))
+
+# Cleanup
+stopCluster(cl)
+
+# Print the mean result to 3 decimal points
+print(round(mean(rand_entropy_all)), 3)
+print(round(mean(rand_entropy_rhs)), 3)
+sprintf("Total random entropy time at 100 replications: %s seconds", rand_ent_time)
+```
+
+The results can be saved down to a csv file.
+
+```{r}
+# Custom column headings
+column1_name <- "Random_Entropy_all"
+column2_name <- "Random_Entropy_After_Index"
+
+# Create a data frame from the vectors
+df <- data.frame(rand_entropy_all, rand_entropy_rhs)
+
+# Set the column names
+colnames(df) <- c(column1_name, column2_name)
+
+# Specify the path to save the CSV file
+file_path <- "./data/EXAMPLE_random_entropy_pooled_stratified.csv"
+
+# Save the data frame to a CSV file
+write.csv(df, file_path, row.names = FALSE)
+```

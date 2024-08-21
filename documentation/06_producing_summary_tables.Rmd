@@ -1,0 +1,395 @@
+---
+title: "Producing summary tables from patient characteristics and treatment durations"
+author: "Chloe Hutton"
+date: "2024-08-20"
+output: html_notebook
+---
+
+# 06 Producing summary tables from patient characteristics and treatment durations
+
+First, we will load the relevant libraries.
+
+```{r}
+# load libraries
+library(readr)
+library(dplyr)
+library(pROC)
+library(broom)
+library(gtsummary)
+```
+
+Next, we will set the working directory.
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/treatment_pathway_exploration")
+```
+
+The location for patient level information needs to be identified next.
+
+```{r}
+# file directory
+pat_details_file <- "./data/pat_level_info.csv"
+```
+
+We will load in the data but filter to the columns we need.
+
+```{r}
+# read the data
+pat_details <- read.table(pat_details_file, header = TRUE, sep = ",", row.names = 1, check.names = FALSE)
+
+# refine to only the required columns
+cols_to_use <- c("Gender:Description",
+                 "Age at Index Date:Description",
+                 "DULAGLUTIDE:Event Occurrence",
+                 "DULAGLUTIDE:Sum:Days Supply",
+                 "EXENATIDE  (BYDUREON, BYETTA):Event Occurrence",
+                 "EXENATIDE  (BYDUREON, BYETTA):Sum:Days Supply",
+                 "LIRAGLUTIDE (SAXENDA):Event Occurrence",
+                 "LIRAGLUTIDE (SAXENDA):Sum:Days Supply",
+                 "LIRAGLUTIDE (VICTOZA):Event Occurrence",
+                 "LIRAGLUTIDE (VICTOZA):Sum:Days Supply",
+                 "LIXISENATIDE ( ADLYXIN):Event Occurrence",
+                 "LIXISENATIDE ( ADLYXIN):Sum:Days Supply",
+                 "Qsymia, Contrave, Xenical, Alli:Event Occurrence Before Index Date",
+                 "Qsymia, Contrave, Xenical, Alli:Event Occurrence on or After Index Date",
+                 "Qsymia, Contrave, Xenical, Alli:Sum:Days Supply",
+                 "SEMAGLUTIDE (OZEMPIC):Event Occurrence",
+                 "SEMAGLUTIDE (OZEMPIC):Sum:Days Supply",
+                 "SEMAGLUTIDE (WEGOVY):Event Occurrence",
+                 "SEMAGLUTIDE (WEGOVY):Sum:Days Supply",
+                 "TIRZEPATIDE (MOUNJARO):Event Occurrence",
+                 "TIRZEPATIDE (MOUNJARO):Sum:Days Supply",
+                 "ALBIGLUTIDE (TANZEUM):Event Occurrence",
+                 "ALBIGLUTIDE (TANZEUM):Sum:Days Supply")             
+
+# columns to not include in summary table
+summary_data <- pat_details[, cols_to_use]
+# preview
+head(summary_data)
+```
+
+Next, we will improve the readability of the columns chosen.
+
+```{r}
+colnames(summary_data) <- c("Gender",
+                           "Age at Index Date",
+                           "Dulaglutide (Trulicity)",
+                           "Dulaglutide (Trulicity) Duration",
+                           "Exenatide (Bydureon, Byetta)",
+                           "Exenatide (Bydureon, Byetta) Duration",
+                           "Liraglutide (Saxenda)",
+                           "Liraglutide (Saxenda) Duration",
+                           "Liraglutide (Victoza)",
+                           "Liraglutide (Victoza) Duration",
+                           "Lixisenatide (Adlyxin)",
+                           "Lixisenatide (Adlyxin) Duration",
+                           "Qsymia, Contrave, Xenical, Alli: Before Index Date",
+                           "Qsymia, Contrave, Xenical, Alli: On or After Index Date",
+                           "Qsymia, Contrave, Xenical, Alli Duration",
+                           "Semaglutide (Ozempic)",
+                           "Semaglutide (Ozempic) Duration",
+                           "Semaglutide (Wegovy)",
+                           "Semaglutide (Wegovy) Duration",
+                           "Tirzepatide (Mounjaro)",
+                           "Tirzepatide (Mounjaro) Duration",
+                           "Albiglutide (Tanzeum)",
+                           "Albiglutide (Tanzeum) Duration")
+```
+
+We will make a new column to consolidate which GLP-1 RA was issued at index date.
+
+```{r}
+# Define the GLP-1 RA medication columns
+glp1_columns <- c("Dulaglutide (Trulicity)",
+                  "Exenatide (Bydureon, Byetta)",
+                  "Liraglutide (Saxenda)",
+                  "Liraglutide (Victoza)",
+                  "Lixisenatide (Adlyxin)",
+                  "Semaglutide (Ozempic)",
+                  "Semaglutide (Wegovy)",
+                  "Tirzepatide (Mounjaro)",
+                  "Albiglutide (Tanzeum)")
+
+# Create the new column
+summary_data$`GLP-1RA at Index Date` <- colnames(summary_data[, glp1_columns])[apply(summary_data[, glp1_columns], 1, which.max)]
+
+# View the first few rows to check the result
+head(summary_data$`GLP-1RA at Index Date`)
+```
+
+We will create a column to consolidate the GLP-1 RA duration as well.
+
+```{r}
+# Define the GLP-1RA duration columns
+glp1_duration_columns <- c("Dulaglutide (Trulicity) Duration",
+                           "Exenatide (Bydureon, Byetta) Duration",
+                           "Liraglutide (Saxenda) Duration",
+                           "Liraglutide (Victoza) Duration",
+                           "Lixisenatide (Adlyxin) Duration",
+                           "Semaglutide (Ozempic) Duration",
+                           "Semaglutide (Wegovy) Duration",
+                           "Tirzepatide (Mounjaro) Duration",
+                           "Albiglutide (Tanzeum) Duration")
+
+# Create a new column that sums the durations across all GLP-1RA drugs
+summary_data$`GLP-1RA Duration` <- rowSums(summary_data[, glp1_duration_columns], na.rm = TRUE)
+
+# View the first few rows to check the result
+head(summary_data$`GLP-1RA Duration`)
+
+```
+
+## Creating a summary table with patient characteristics
+
+`tbl_summary` was used to create a summary table.
+
+```{r}
+# Create the summary table including the new GLP-1RA at Index Date column
+summary_table <- summary_data %>%
+  select(Gender, `Age at Index Date`, `GLP-1RA at Index Date`) %>%
+  tbl_summary(
+    label = list(
+      Gender = "Gender",
+      `Age at Index Date` = "Age at Index Date",
+      `GLP-1RA at Index Date` = "GLP-1 RA medication at Index Date"
+    ),
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),  # Show counts and percentages
+    missing_text = "Missing"
+  ) %>%
+  bold_labels()  # Bold the labels
+
+# Display the summary table
+summary_table
+
+```
+
+The summary table can be saved down if required.
+
+```{r}
+# Convert summary_table to a data frame (assuming it's a tbl_summary object)
+df_summary <- summary_table %>% 
+  as.data.frame()
+
+# Save as CSV
+write.csv(df_summary, "./data/cohort_summary_table_example.csv", row.names = FALSE)
+```
+
+## Creating a treatment duration summary table
+
+For this, we will include other anti-obesity medications as well.
+
+```{r}
+# Identify columns containing "Duration"
+duration_columns <- c("Qsymia, Contrave, Xenical, Alli Duration",
+                      "Dulaglutide (Trulicity) Duration",
+                       "Exenatide (Bydureon, Byetta) Duration",
+                       "Liraglutide (Saxenda) Duration",
+                       "Liraglutide (Victoza) Duration",
+                       "Lixisenatide (Adlyxin) Duration",
+                       "Semaglutide (Ozempic) Duration",
+                       "Semaglutide (Wegovy) Duration",
+                       "Tirzepatide (Mounjaro) Duration",
+                       "Albiglutide (Tanzeum) Duration",
+                      "GLP-1RA Duration")
+
+# Select only the duration columns
+duration_data <- summary_data %>%
+  select(all_of(duration_columns))
+
+```
+
+We will work out the mean and standard deviation.
+
+```{r}
+# Calculate mean and standard deviation for duration columns
+duration_stats <- duration_data %>%
+  summarise(across(everything(), list(mean = ~ mean(.x, na.rm = FALSE),
+                                      sd = ~ sd(.x, na.rm = FALSE))))
+```
+
+Next, the summary table is created.
+
+```{r}
+# Create a summary table for duration columns
+duration_summary_table <- duration_data %>%
+  tbl_summary(
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})"  # Mean and SD for continuous duration variables
+    ),
+    missing_text = ""
+  ) %>% 
+  # Remove rows with missing data (if necessary)
+  remove_row_type(type = "missing", level_value = "Missing")
+
+# Modify the table body to remove "Duration" from characteristics
+duration_summary_table <- duration_summary_table %>%
+  modify_table_body(~ {
+    .x %>%
+      mutate(across(everything(), ~ gsub("Duration", "", .)))
+  }) %>%
+  modify_header(label = '**Mean Prescription Duration**')
+
+# Update the summary table header to "Mean Prescription Duration"
+duration_summary_table <- duration_summary_table %>%
+  modify_header(
+    list(
+      all_continuous() ~ "**Mean Prescription Duration**"
+    )
+  )
+
+# Display the updated summary table
+duration_summary_table
+```
+
+Again, the result can be saved.
+
+```{r}
+# Convert summary_table to a data frame (assuming it's a tbl_summary object)
+df_dur_summary <- duration_summary_table %>% 
+  as.data.frame()
+
+# Save as CSV
+write.csv(df_dur_summary, "./data/cohort_summary_table2.csv", row.names = FALSE, quote = TRUE)
+```
+
+## Stratifying the patient characteristics by clusters
+
+We will use the cluster file saved down in notebook 05.
+
+```{r}
+# file directory for cluster information
+clusters_file <- "./results/PatId_2-clusters_Model_A_stratified.csv"
+
+# read the data
+cluster_details <- read.table(clusters_file, header = TRUE, sep = ",", row.names = 1, check.names = FALSE)
+
+# retrieve number of clusters
+k <- length(unique(cluster_details$Cluster))
+
+# update the values to be prefixed by "Cluster"
+cluster_details <- cluster_details %>%
+  mutate(across(Cluster, ~ factor(., levels = c(1:k), labels = paste("Cluster", 1:k))))
+
+# preview
+head(cluster_details)
+```
+
+Next, we will merge with the summary data.
+
+```{r}
+# Merge the data frames by row names
+clustered_summary_data <- merge(summary_data, cluster_details, by = "row.names")
+
+# Rename the 'Row.names' column back to row names if needed
+rownames(clustered_summary_data) <- clustered_summary_data$Row.names
+clustered_summary_data$Row.names <- NULL
+
+# View the merged data
+head(clustered_summary_data)
+```
+
+```{r}
+# Stratify the summary table by Cluster
+summary_table_stratified <- clustered_summary_data %>%
+  select(Gender, `Age at Index Date`, `Qsymia, Contrave, Xenical, Alli: Before Index Date`,
+         `Qsymia, Contrave, Xenical, Alli: On or After Index Date`, `GLP-1RA at Index Date`, Cluster) %>%
+  tbl_summary(
+    by = Cluster,  # Stratify by Cluster
+    label = list(
+      Gender = "Gender",
+      `Age at Index Date` = "Age at Index Date",
+      `GLP-1RA at Index Date` = "GLP-1 RA medication at Index Date"
+    ),
+    statistic = list(all_categorical() ~ "{n} ({p}%)"),  # Show counts and percentages
+    missing_text = "Missing"
+  ) %>%
+  add_p() %>%  # Add p-values
+  bold_labels()  # Bold the labels
+
+# Display the stratified summary table
+summary_table_stratified
+```
+
+Again, this can be saved down.
+
+```{r}
+# Convert stratified summary table to a data frame
+df_summary_stratified <- summary_table_stratified %>% 
+  as.data.frame()
+
+# Save as CSV with updated filename
+summary_strat_filename <- sprintf("./data/cohort_summary_table_stratified_by_cluster_%s.csv", "model_A_stratified")
+write.csv(df_summary_stratified, summary_strat_filename, row.names = FALSE)
+```
+
+## Stratifying treatment durations by clusters
+
+```{r}
+# Convert duration columns to numeric, if they aren't already
+clustered_summary_data[duration_columns] <- lapply(clustered_summary_data[duration_columns], as.numeric)
+```
+
+We will drop the medications which have no data.
+
+```{r}
+# Define columns to drop
+columns_to_drop <- c("Lixisenatide (Adlyxin) Duration", "Albiglutide (Tanzeum) Duration")
+
+# Drop the specified columns from the dataframe
+filtered_summary_data <- clustered_summary_data %>%
+  select(-all_of(columns_to_drop))
+
+# Verify the columns have been dropped
+print(colnames(filtered_summary_data))
+```
+
+```{r}
+# Remove duration columns you don’t want
+remaining_duration_columns <- setdiff(duration_columns, columns_to_drop)
+
+# Filter data to include only the remaining duration columns
+filtered_duration_data <- filtered_summary_data %>%
+  select(all_of(remaining_duration_columns), Cluster)
+str(filtered_duration_data)
+```
+
+```{r}
+# Create the summary table for duration columns with filtered data
+duration_summary_table_stratified_filtered <- filtered_duration_data %>%
+  tbl_summary(
+    by = Cluster,  # Stratify by Cluster
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})"  # Mean and SD for continuous duration variables
+    ),
+    missing_text = ""
+  ) %>% 
+  # Remove rows with missing data (if necessary)
+  remove_row_type(type = "missing") %>% 
+  modify_table_body(~ {
+    .x %>%
+      mutate(across(everything(), ~ gsub("Duration", "", .)))
+  }) %>%
+  modify_header(label = '**Mean Prescription Duration**')
+
+# Update the summary table header to "Mean Prescription Duration"
+duration_summary_table_stratified_filtered <- duration_summary_table_stratified_filtered %>%
+  modify_header(
+    label =  "**Mean Prescription Duration**"
+    )
+
+# Display the updated duration summary table
+duration_summary_table_stratified_filtered
+```
+
+This can be saved as a csv file.
+
+```{r}
+# Convert the duration summary table to a data frame
+df_dur_summary_stratified_filtered <- duration_summary_table_stratified_filtered %>% 
+  as.data.frame()
+
+# Save as CSV with updated filename
+str_filtered_dur_filename <- sprintf("./data/cohort_duration_summary_table_stratified_by_cluster_filtered_%s.csv", model_name)
+write.csv(df_dur_summary_stratified_filtered, str_filtered_dur_filename, row.names = FALSE, quote = TRUE)
+
+```

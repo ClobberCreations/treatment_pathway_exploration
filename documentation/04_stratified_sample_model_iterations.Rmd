@@ -1,0 +1,295 @@
+---
+title: "Stratified sample model iterations"
+author: "Chloe Hutton"
+date: "2024-08-20"
+output: html_notebook
+---
+
+# 04 Stratified sample model iterations
+
+To find a suitable model for the cohort, a stratified sample was created to iterate through different model parameters.
+
+## Loading in the sequence object and creating a stratified sample.
+
+First, we will set the working directory and then load in the sequence objects, `TrajectoryAnalysis` class and `create_stratified_cohort` function.
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/treatment_pathway_exploration")
+```
+
+```{r}
+source("./code/patient_trajectories.r")
+```
+
+```{r}
+# additional patient information for stratifying sample
+pat_details_file <- "./data/pat_level_info.csv"
+
+# run function to create a stratified sample - very small sample for demo!
+stratified_seqact_pooled <- create_stratified_cohort(seqact_pooled_all, pat_details_file = pat_details_file, sample_size = 0.01)
+```
+
+## Defining the parameters
+
+Next, we will create a series of variables to consider for the model parameters.
+
+```{r}
+# Define the parameter grid variables
+substitution_costs <- seq(0.5, 10, by = 0.5)
+sub_method_param <- c("CONSTANT", "TRATE", "INDELSLOG", "FUTURE")
+time_varies_param <- c(TRUE, FALSE)
+lag_param <- c(1, 7, 14, 21, 28, 54, 90, 104)
+indel_param <- seq(0.5, 3, by = 0.5)
+dist_method_param <- c("HAM", "DHD", "OM", "OMspell", "CHI2", "TWED")
+tpow_params <- seq(0.1, 2, by = 0.5)
+expcost_params <- seq(0.1, 1, by = 0.1)
+h_params <- seq(0.1, 1, by = 0.1)
+nu_params <- seq(0.1, 1, by = 0.1)
+
+# Define 28-day intervals
+breaks_28 <- list()
+for (i in seq(1, 365, by=28)) {
+  end <- min(i + 27, 365)
+  breaks_28 <- append(breaks_28, list(c(i, end)))
+}
+
+# Define 30-day intervals
+breaks_30 <- list()
+for (i in seq(1, 365, by=30)) {
+  end <- min(i + 29, 365)
+  breaks_30 <- append(breaks_30, list(c(i, end)))
+}
+# Combine the two sets of intervals
+breaks_combined <- c(breaks_28, breaks_30)
+#breaks <- list(c(1:28), c(1,30), c(1,31), c(28, 54), c())
+step_params <- seq(0.1, 1, by = 0.1)
+overlap_params <- c(TRUE, FALSE)
+#range_1_param <- list(NA, 1:28, 1:54, 1:90, 1:104)
+range_1_param <- IRanges(start=c(0, 1, 1, 1, 1), end=c(0, 28, 54, 90, 104))
+range_1_val_param <- seq(1, 20, by = 1)
+```
+
+## Create a results table and file for saving down the results
+
+```{r}
+# Initialize data frame to store all parameter models and their results
+results_table <- data.frame(ModelName = character(),
+                            TimeTaken = numeric(),
+                            DistMatrixTime = numeric(),
+                            ClusteringTime = numeric(),
+                            OLOTime = numeric(),
+                            ASWw = numeric(),
+                            ASWw_num_clusters = numeric(),
+                            CHsq_value = numeric(),
+                            CHsq_clusters = numeric(),
+                            Entropy = numeric(),
+                            EntropyRHS = numeric(),
+                            EntropyRandom = numeric(),
+                            EntropyRandomRHS = numeric(),
+                            SeqDistMethod = numeric(),
+                            ClustMethod = character(),
+                            SubMatrixMethod = character(),
+                            ConstantValue = numeric(),
+                            Range1_range = character(),
+                            Range1_val = numeric(),
+							              Indel = numeric(),
+                            NPatients = numeric(),
+                            stringsAsFactors = FALSE  # Avoid automatic factor conversion
+							              )
+
+# create the results file
+results_file = "./results/gridsearchresults-sample.csv"
+
+# write the column headings to the file
+write.csv(results_table, results_file, row.names = FALSE)
+
+```
+
+## Iterate over all the parameters
+
+```{r}
+# Grid search - iterate through options
+for (dist_method in dist_method_param) {
+  for (sub_cost in substitution_costs) {
+    for (sub_method in sub_method_param) {
+      for (lag in lag_param) {
+        for (indel in indel_param) {
+          for (time_varies in time_varies_param) {
+            # Skip invalid combinations
+            if ((time_varies == TRUE && !(dist_method %in% c("DHD"))) |
+                (dist_method == "DHD" && isFALSE(time_varies)) |
+                (dist_method == "DHD" && sub_method == "FUTURE") |
+                (dist_method %in% c("DHD", "HAM", "CHI2") && indel > 0.5) |
+                (sub_method == "INDELSLOG" && indel > 0.5)|
+                (!(sub_method %in% c("CONSTANT", "TRATE")) && sub_cost > 0.5)) {
+              next
+            }
+            if (sub_method == "INDELSLOG") {
+              indel <- "auto"
+            }
+            # Skip to avoid iterating over lags for methods not applicable
+            if (lag > 1 && !(sub_method %in% c("TRATE", "FUTURE"))) {
+              next
+            }
+            # if distance matrix is OMspell
+            if (dist_method == "OMspell") {
+              for (tpow in tpow_params) {
+                for (expcost in expcost_params) {
+                  model_name <- sprintf("OMspell-%stpow-%sexpcost-%sindel-%scval", tpow, expcost, indel, sub_cost)
+                  model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                                  alphabet_pooled, labels_pooled,
+                                                  scodes_pooled, name = model_name,
+                                                  con_val = sub_cost,
+                                                  cost_method = sub_method,
+                                                  seqdist_indel = indel,
+                                                  trace_flag = trace_flag,
+                                                  heatmap_flag = heatmap_flag,
+                                                  tpow = tpow,
+                                                  seqdist_method = dist_method,
+                                                  cluster_method = "ward.D2",
+                                                  expcost = expcost,
+                                                  rand_entropy = rand_entropy_all,
+                                                  rand_entropy_rhs = rand_entropy_rhs,
+                                                  pi_dissim = TRUE)
+                }
+              }
+              # if TWED
+            } else if (dist_method == "TWED") {
+              for (h in h_params) {
+                for (nu in nu_params) {
+                  model_name <- sprintf("TWED-%sh-%snu-%sindel-%scval", h, nu,
+                                        indel, sub_cost)
+                  model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                                  alphabet_pooled, labels_pooled,
+                                                  scodes_pooled, name = model_name,
+                                                  con_val = sub_cost,
+                                                  cost_method = sub_method,
+                                                  trace_flag = trace_flag,
+                                                  heatmap_flag = heatmap_flag,
+                                                  h = h, seqdist_indel = indel,
+                                                  seqdist_method = dist_method,
+                                                  cluster_method = "ward.D2",
+                                                  nu = nu,
+                                                  rand_entropy = rand_entropy_all, rand_entropy_rhs = rand_entropy_rhs,
+                                                  pi_dissim = TRUE)
+                }
+              }
+              # if CHI2
+            } else if (dist_method == "CHI2") {
+              
+              for (step in step_params) {
+                model_name <- sprintf("CHI2-%sbreak-%sstep-%sindel-%scval",
+                                      break_param, step, indel, sub_cost)
+                model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                                alphabet_pooled, labels_pooled,
+                                                scodes_pooled, name = model_name,
+                                                con_val = sub_cost,
+                                                cost_method = sub_method,
+                                                trace_flag = trace_flag,
+                                                heatmap_flag = heatmap_flag,
+                                                breaks = breaks_combined,
+                                                seqdist_method = dist_method,
+                                                cluster_method = "ward.D2",
+                                                step = step,
+                                                rand_entropy = rand_entropy_all, rand_entropy_rhs = rand_entropy_rhs,
+                                                pi_dissim = TRUE)
+                
+              }
+              # if DHD and time varies for substitution cost matrix
+            } else if (dist_method == "DHD" && isTRUE(time_varies)) {
+              print(range_1_param)
+              for (i in 1:length(range_1_param)) {
+                print(end(range_1_param[i]))
+                if (end(range_1_param[i]) == 0) {
+                  # Skip constant
+                  if (sub_method == "CONSTANT") {
+                    next
+                  } else {
+                    model_name <- sprintf("DHD-%ssubmethod-%sindel-%scval", sub_method, indel, sub_cost)
+                    model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                                    alphabet_pooled, labels_pooled,
+                                                    scodes_pooled,
+                                                    name = model_name,
+                                                    con_val = sub_cost,
+                                                    cost_method = sub_method,
+                                                    trace_flag = trace_flag,
+                                                    heatmap_flag = heatmap_flag,
+                                                    seqdist_method = dist_method,
+                                                    cluster_method = "ward.D2",
+                                                    time_varies = TRUE,
+                                                    rand_entropy = rand_entropy_all,
+                                                    rand_entropy_rhs = rand_entropy_rhs,
+                                                    pi_dissim = TRUE)
+                  }
+                  # all the rest
+                } else {
+                  for (rval in range_1_val_param) {
+                    model_name <- sprintf("DHD-%srange1-%srangeval-%sindel-%scval",
+                                          range, rval, indel, sub_cost)
+                    rng1 <- start(range_1_param[i]):end(range_1_param[i])
+                    model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                                    alphabet_pooled, labels_pooled,
+                                                    scodes_pooled,
+                                                    name = model_name,
+                                                    con_val = sub_cost,
+                                                    cost_method = sub_method,
+                                                    trace_flag = trace_flag,
+                                                    heatmap_flag = heatmap_flag,
+                                                    range_1 = rng1,
+                                                    range_1_val = rval,
+                                                    seqdist_method = dist_method,
+                                                    cluster_method = "ward.D2",
+                                                    time_varies = TRUE,
+                                                    rand_entropy = rand_entropy_all,
+                                                    rand_entropy_rhs = rand_entropy_rhs,
+                                                    pi_dissim = TRUE)
+                  }
+                }
+              }
+            } else {
+              # Handle other methods (e.g., HAM) here as needed
+              model_name <- sprintf("%s-%s-%sindel-%scval",
+                                    sub_method, dist_method, indel, sub_cost)
+              model <- TrajectoryAnalysis$new(stratified_seqact_pooled, palette_pooled,
+                                              alphabet_pooled, labels_pooled,
+                                              scodes_pooled, name = model_name,
+                                              con_val = sub_cost,
+                                              cost_method = sub_method,
+                                              trace_flag = trace_flag,
+                                              heatmap_flag = heatmap_flag,
+                                              seqdist_indel = indel,
+                                              seqdist_method = dist_method,
+                                              cluster_method = "ward.D2",
+                                              rand_entropy = rand_entropy_all,
+                                              rand_entropy_rhs = rand_entropy_rhs,
+                                              pi_dissim = TRUE)
+              
+            }
+            model$run_analysis()
+            print(model$results)
+            
+            write.table(model$results, results_file,
+                          append = TRUE,
+                          sep = ",",
+                          col.names = FALSE,
+                          row.names = FALSE,
+                          quote = FALSE)
+            # Store the current parameters and quality in the results table
+            results_table <- rbind(results_table, model$results)
+          }
+        }
+      }
+    }
+  }
+}
+
+```
+
+## Review the results
+
+You can print the results at the end of the run or view the saved csv file.
+
+```{r}
+# Print the results table
+print(results_table)
+```
