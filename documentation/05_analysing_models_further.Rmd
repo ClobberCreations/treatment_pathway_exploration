@@ -43,7 +43,7 @@ summary(stratified_seqact)
 We can create a plot showing the dendrogram using the `dend_heatmap` method within the model object.  This will appear alongside the trajectories.  It can be useful to consider the number of clusters to select.
 
 ```{r}
-# create inedendrogram plot
+# create the dendrogram plot
 model_A$dend_heatmap(k = 2)
 ```
 
