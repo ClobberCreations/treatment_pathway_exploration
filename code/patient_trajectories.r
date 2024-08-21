@@ -427,7 +427,7 @@ TrajectoryAnalysis <- R6Class(
           }
         }
         yheading <- sprintf("Cohort: %s patients, ordered", nrow(self$seqact))
-        title <- sprintf("Treatment Pattern Sequences Ordered Split Into %s Clusters", k)
+        title <- sprintf("Treatment Pattern Sequences and Dendrogram - %s Clusters", k)
         
         #self$trace(cluster_lines)
         heatmap(mat, tree, col=self$palette, scale = 'none', Colv = NA,
