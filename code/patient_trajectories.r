@@ -441,7 +441,7 @@ TrajectoryAnalysis <- R6Class(
                   cluster_start <- 1
                   for (i in 1:length(sorted_clusters)) {
                     if (sorted_clusters[i] != last_cluster) {
-                      text(x = ncol(seqact) / 5, y = (cluster_start + i - 1) / 2 , labels = paste("Cluster", last_cluster), pos = 2, col = "black")
+                      text(x = ncol(self$seqact) / 5, y = (cluster_start + i - 1) / 2 , labels = paste("Cluster", last_cluster), pos = 2, col = "black")
                       last_cluster<- sorted_clusters[i]
                       cluster_start <- i
                     }
