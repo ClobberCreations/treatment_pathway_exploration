@@ -40,11 +40,11 @@ stratified_seqact <- seqact_all[row.names(model_A$seqact),]
 summary(stratified_seqact)
 ```
 
-We can create an intertia plot using the `create_inertia_plot` function from `model_analysis.r`
+We can create a plot showing the dendrogram using the `dend_heatmap` method within the model object.  This will appear alongside the trajectories.  It can be useful to consider the number of clusters to select.
 
 ```{r}
-# create inertia plot using height of dendrogram
-create_inertia_plot(model_A, elbow_point = NA)
+# create inedendrogram plot
+model_A$dend_heatmap(k = 2)
 ```
 
 We can create labelled clusters with the `label_clusters` function.
