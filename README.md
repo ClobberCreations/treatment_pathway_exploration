@@ -22,7 +22,7 @@ The original files which are absent were called:
 
 -   [documentation](./documentation)
 
-A series of R notebooks which guide you through all of the analysis of the project from tranforming the event log into patient trajectories to stratifying patient characteristics by cluster.
+A series of R notebooks which guide you through all of the analysis of the project from transforming the event log into patient trajectories to stratifying patient characteristics by cluster.
 
 -   [models](./models)
 
